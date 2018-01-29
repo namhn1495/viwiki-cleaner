@@ -1,5 +1,7 @@
+import info.bliki.wiki.model.WikiModel
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.{SparkConf, SparkContext}
+import org.jsoup.Jsoup
 import utils.EscapseUtils
 
 /**
@@ -55,12 +57,15 @@ object SparkProcess {
 
     val sqlContext = spark.sqlContext
     import spark.implicits._
-
+    spark.read.parquet("F:\\input_wiki\\parquet")
+      .show(10)
     val df = sqlContext.read
       .format("com.databricks.spark.xml")
       .option("rowTag", "page")
-//      .load("F:\\input_wiki\\viwiki-20180101-pages-meta-current.xml")
-      .load("input.xml")
+      .load("F:\\input_wiki\\viwiki-20180101-pages-meta-current.xml")
+//      .load("input.xml")
+      .limit(10000)
+
     df.printSchema()
 
     df.rdd.map(row => {
@@ -68,7 +73,7 @@ object SparkProcess {
       var ns: Long = -1
       var restrictions: String = null
       var title: String = null
-      var format: String = null
+      var format: String = ViwikiTextCleaner.FORMAT_TEXT_PLAIN
       var r_id: Long = -1
       var minor: String = null
       var model: String = null
@@ -82,26 +87,25 @@ object SparkProcess {
       if (!row.isNullAt(3)) restrictions = row.getString(3)
       val revision = row.getStruct(4)
       if (!row.isNullAt(5)) title = row.getString(5)
-//      if (!revision.isNullAt(0)) comment = revision.getStruct(0)
-//      if (!revision.isNullAt(1)) contributor = revision.getStruct(1)
-      if (!revision.isNullAt(2)) format = revision.getString(2)
+      if (!revision.isNullAt(0)) comment = revision.getStruct(0)
+      if (!revision.isNullAt(1)) contributor = revision.getStruct(1)
+//      if (!revision.isNullAt(2)) format = revision.getString(2)
       if (!revision.isNullAt(3)) r_id = revision.getLong(3)
       if (!revision.isNullAt(4)) minor = revision.getString(4)
       if (!revision.isNullAt(5)) model = revision.getString(5)
       if (!revision.isNullAt(6)) parentid = revision.getLong(6)
       if (!revision.isNullAt(7)) sha1 = revision.getString(7)
       if (!revision.isNullAt(9)) timestamp = revision.getString(9)
-      var new_text = ViwikiTextCleaner.clean(r_id)
       var text: ViwikiText = null
-      if (new_text == null) {
-        if (!revision.isNullAt(8) && !revision.getStruct(8).isNullAt(0)) {
-          text = ViwikiText(revision.getStruct(8).getString(0), "preserve")
-        } else {
-          text = ViwikiText(null, "preserve")
+      if (!revision.isNullAt(8)) {
+        val textStruct = revision.getStruct(8)
+        if(!textStruct.isNullAt(0)) {
+//          val html = WikiModel.toHtml(textStruct.getString(0))
+//          println(Jsoup.parse(html).text())
+          text = ViwikiText(ViwikiTextCleaner.clean(textStruct.getString(0)), "preserve")
         }
-      } else {
-        text = ViwikiText(new_text, "preserve")
       }
+      if(text == null) text = ViwikiText(null, "preserve")
       var _comment:String = null
       var _contributor:ViwikiContributor = null
       if(comment!=null){
